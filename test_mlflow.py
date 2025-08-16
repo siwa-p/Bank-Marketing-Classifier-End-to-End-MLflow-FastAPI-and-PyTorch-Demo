@@ -7,9 +7,10 @@ mlflow.set_tracking_uri("http://localhost:5000")
 mlflow.set_experiment("synthetic_regression_test")
 
 X, y = make_regression(n_samples=100, n_features=5, noise=0.1, random_state=42)
-
+print(X)
 print("X shape:", X.shape)
-
+print(y)
+print("y shape:", y.shape)
 # Log to MLflow
 with mlflow.start_run():
     mlflow.log_param("model_type", "LinearRegression")
