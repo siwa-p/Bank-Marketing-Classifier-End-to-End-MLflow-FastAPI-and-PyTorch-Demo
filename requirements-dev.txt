@@ -1,7 +1,9 @@
 scikit-learn
 pandas
-lightning
 # torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
 # torchinfo
 optuna
 mlflow
+duckdb
+MinIO
+dotenv

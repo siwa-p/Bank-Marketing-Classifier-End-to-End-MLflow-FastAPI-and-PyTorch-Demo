@@ -30,6 +30,8 @@ def objective(trial):
         test_dataset, batch_size=batch_size, shuffle=False
         )
     with mlflow.start_run():
+        mlflow.set_tag("trial_number", trial.number)
+        mlflow.set_tag("study_name", "mnist_hyperopt")
         mlflow.log_params({
             "learning_rate": lr,
             "hidden_units": [hidden1, hidden2],
@@ -74,3 +76,27 @@ study = optuna.create_study(direction="minimize")
 study.optimize(objective, n_trials=10)
 print("Best hyperparameters:", study.best_params)
 print("Best validation loss:", study.best_value)
+
+# train with best hyperparameters and log final model
+best_params = study.best_params
+with mlflow.start_run():
+    mlflow.set_tag("final_model", "mnist_mlp")
+    mlflow.log_params(best_params)
+    
+    final_model = MLPModel(hidden_units=[best_params['hidden_units_1'], best_params['hidden_units_2']]).to(device)
+    optimizer = optim.Adam(final_model.parameters(), lr=best_params['learning_rate'])
+    loss_fn = nn.CrossEntropyLoss()
+    
+    train_loader = DataLoader(train_dataset, batch_size=best_params['batch_size'], shuffle=True)
+    
+    for epoch in range(5):  # Reduced epochs for faster training
+        final_model.train()
+        for data, target in train_loader:
+            data, target = data.to(device), target.to(device)
+            optimizer.zero_grad()
+            output = final_model(data)
+            loss = loss_fn(output, target)
+            loss.backward()
+            optimizer.step()
+    
+    mlflow.pytorch.log_model(final_model, "model", registered_model_name="MNIST_MLP_Model")

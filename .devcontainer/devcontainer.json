@@ -1,0 +1,26 @@
+{
+  "name": "Python Base DevContainer",
+  "dockerComposeFile": [
+    "compose-services/docker-compose.base.yml",
+    "compose-services/docker-compose.minio.yml",
+    "compose-services/docker-compose.postgres.yml",
+    "compose-services/docker-compose.trackingserver.yml"
+  ],
+  "service": "app",
+  "workspaceFolder": "/workspace",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-from-docker:1": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "mechatroner.rainbow-csv",
+        "redhat.vscode-yaml",
+        "GitHub.copilot",
+        "GitHub.copilot-chat"
+      ]
+    }
+  }
+}
