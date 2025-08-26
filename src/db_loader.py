@@ -1,7 +1,6 @@
 import duckdb
 import sys
 import os
-from minio import Minio
 from dotenv import load_dotenv
 current_path = os.path.dirname(os.path.abspath(__file__))
 parent_path = os.path.abspath(os.path.join(current_path, ".."))

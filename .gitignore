@@ -207,3 +207,9 @@ marimo/_lsp/
 __marimo__/
 
 data/
+
+mlruns/
+mlartifacts/
+*.ducklake
+catalog_data/
+

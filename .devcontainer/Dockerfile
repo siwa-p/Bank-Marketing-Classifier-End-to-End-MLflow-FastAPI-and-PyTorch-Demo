@@ -1,8 +1,10 @@
-FROM mcr.microsoft.com/vscode/devcontainers/python:3.10
+FROM nvidia/cuda:13.0.0-tensorrt-devel-ubuntu24.04
 
 USER root
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends git curl postgresql-client && \
+    apt-get install -y --no-install-recommends \
+    python3.12 python3.12-venv python3.12-dev python3-pip \
+    git curl postgresql-client && \
     apt-get clean -y && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --upgrade pip

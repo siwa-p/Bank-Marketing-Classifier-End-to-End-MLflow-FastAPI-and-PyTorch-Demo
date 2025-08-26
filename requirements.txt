@@ -1,3 +1,10 @@
 psycopg2-binary
 boto3
 mlflow
+optuna
+mlflow
+duckdb
+MinIO
+dotenv
+scikit-learn
+pandas
