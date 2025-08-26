@@ -27,7 +27,6 @@ class DuckLakeDataset(Dataset):
             features_tot = pd.concat([numerical_features, encoded_features], axis=1)
         else:
             features_tot = numerical_features
-        # Ensure all columns are numeric and fill NaNs
         features_tot = features_tot.apply(pd.to_numeric, errors='coerce').fillna(0)
         self.X = torch.tensor(features_tot.astype('float32').values, dtype=torch.float32)
         if 'y' in self.df.columns:
@@ -40,11 +39,11 @@ class DuckLakeDataset(Dataset):
         if self.y is not None:
             return self.X[idx], self.y[idx]
         else:
-            return self.X[idx]
+            return self.X[idx], None
 
 
 con = duckdb.connect(database=':memory:')
-con.execute("ATTACH 'ducklake:/workspace/catalog.ducklake' AS my_lake (DATA_PATH '/workspace/catalog_data')")
+con.execute("ATTACH 'ducklake:/home/prahald/Documents/Data Engineering Bootcamp/mlflow-demo/catalog.ducklake' AS my_lake (DATA_PATH '/home/prahald/Documents/Data Engineering Bootcamp/mlflow-demo/catalog_data')")
 con.execute("USE my_lake")
 
 train_dataset = DuckLakeDataset(con, "SELECT * FROM bank_schema.train")
@@ -54,25 +53,26 @@ test_dataset = DuckLakeDataset(con, "SELECT * FROM bank_schema.test")
 
 def objective(trial):
     lr = trial.suggest_loguniform("learning_rate", 1e-5, 1e-2)
-    hidden1 = trial.suggest_int("hidden_units_1", 64, 256, step=32)
-    hidden2 = trial.suggest_int("hidden_units_2", 32, 128, step=16)
-    batch_size = trial.suggest_categorical("batch_size", [32, 64, 128])
+    hidden1 = trial.suggest_int("hidden_units_1", 64, 128, step=16)
+    hidden2 = trial.suggest_int("hidden_units_2", 16, 64, step=16)
+    hidden3 = trial.suggest_int("hidden_units_3", 8, 32, step=8)
+    batch_size = trial.suggest_categorical("batch_size", [8, 32, 64])
 
-    train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
     
     with mlflow.start_run():
         mlflow.set_tag("trial_number", trial.number)
         mlflow.set_tag("study_name", "mnist_hyperopt")
         mlflow.log_params({
             "learning_rate": lr,
-            "hidden_units": [hidden1, hidden2],
+            "hidden_units": [hidden1, hidden2, hidden3],
             "batch_size": batch_size
         })
         in_features = train_dataset.X.shape[1]
-        mlpmodel = MLPModel(in_features=in_features, hidden_units=[hidden1, hidden2]).to(device)
+        mlpmodel = MLPModel(in_features=in_features, hidden_units=[hidden1, hidden2, hidden3]).to(device)
         optimizer = optim.Adam(mlpmodel.parameters(), lr=lr)
-        loss_fn = nn.CrossEntropyLoss()
+        loss_fn = nn.BCEWithLogitsLoss()
         
         for epoch in range(5):  # Reduced epochs for faster trials
             mlpmodel.train()
@@ -80,7 +80,7 @@ def objective(trial):
                 data, target = data.to(device), target.to(device)
                 optimizer.zero_grad()
                 output = mlpmodel(data)
-                loss = loss_fn(output, target)
+                loss = loss_fn(output, target.unsqueeze(1).float())
                 loss.backward()
                 optimizer.step()
             
@@ -93,7 +93,7 @@ def objective(trial):
                 for data, target in test_loader:
                     data, target = data.to(device), target.to(device)
                     output = mlpmodel(data)
-                    loss = loss_fn(output, target)
+                    loss = loss_fn(output, target.unsqueeze(1).float())
                     
                     val_loss += loss.item()
                     _, predicted = output.max(1)
@@ -119,7 +119,7 @@ with mlflow.start_run():
     
     final_model = MLPModel(hidden_units=[best_params['hidden_units_1'], best_params['hidden_units_2']]).to(device)
     optimizer = optim.Adam(final_model.parameters(), lr=best_params['learning_rate'])
-    loss_fn = nn.CrossEntropyLoss()
+    loss_fn = nn.BCEWithLogitsLoss()
     
     train_loader = DataLoader(train_dataset, batch_size=best_params['batch_size'], shuffle=True)
     
@@ -129,7 +129,7 @@ with mlflow.start_run():
             data, target = data.to(device), target.to(device)
             optimizer.zero_grad()
             output = final_model(data)
-            loss = loss_fn(output, target)
+            loss = loss_fn(output, target.unsqueeze(1).float())
             loss.backward()
             optimizer.step()
     

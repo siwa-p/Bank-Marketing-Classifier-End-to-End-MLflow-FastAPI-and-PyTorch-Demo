@@ -19,7 +19,7 @@ from utilities.utils import get_minio_client, upload_to_minio
 minio_client = get_minio_client(minio_url, minio_access_key, minio_secret_key)
 
 def main():
-    root_file_path = "/workspace/data/"
+    root_file_path = "/home/prahald/Documents/Data Engineering Bootcamp/mlflow-demo/data/"
     train_data = pd.read_csv(f"{root_file_path}train.csv")
     test_data = pd.read_csv(f"{root_file_path}test.csv")
     upload_to_minio(minio_client, minio_bucket, train_data, "train.parquet")

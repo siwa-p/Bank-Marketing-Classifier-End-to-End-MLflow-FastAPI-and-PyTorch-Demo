@@ -61,7 +61,7 @@ def setup_db(con, minio_url, minio_access_key, minio_secret_key):
         SET s3_use_ssl=false;
         SET s3_url_style='path';
     """)
-    con.execute("ATTACH 'ducklake:/workspace/catalog.ducklake' AS my_lake (DATA_PATH '/workspace/catalog_data')")
+    con.execute("ATTACH 'ducklake:/home/prahald/Documents/Data Engineering Bootcamp/mlflow-demo/catalog.ducklake' AS my_lake (DATA_PATH '/home/prahald/Documents/Data Engineering Bootcamp/mlflow-demo/catalog_data')")
     con.execute("USE my_lake")
     con.execute("CREATE SCHEMA IF NOT EXISTS bank_schema")
     logger.info(f"Database setup completed")
