@@ -7,18 +7,16 @@ from utilities.logging_config import logger
 
 
 class MLPModel(nn.Module):
-    def __init__(self, in_features, hidden_units=[64, 32, 8]):
+    def __init__(self, in_features, hidden_units=[128, 32]):
         super().__init__()
         self.fc1 = nn.Linear(in_features, hidden_units[0])
         self.fc2 = nn.Linear(hidden_units[0], hidden_units[1])
-        self.fc3 = nn.Linear(hidden_units[1], hidden_units[2])
-        self.fc4 = nn.Linear(hidden_units[2], 1)
+        self.fc3 = nn.Linear(hidden_units[1], 1)
         
     def forward(self, x):
         x = torch.relu(self.fc1(x))
         x = torch.relu(self.fc2(x))
-        x = torch.relu(self.fc3(x))
-        x = self.fc4(x)
+        x = self.fc3(x)
         return x
     
 def get_minio_client(minio_url, minio_access_key, minio_secret_key):
