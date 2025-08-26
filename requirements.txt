@@ -8,3 +8,4 @@ MinIO
 dotenv
 scikit-learn
 pandas
+fastapi[standard]
