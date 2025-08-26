@@ -1,8 +1,10 @@
 import mlflow
+import duckdb
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader
+import pandas as pd
+from torch.utils.data import DataLoader, Dataset    
 from torchvision import transforms, datasets
 import optuna
 from utilities.utils import MLPModel  
@@ -10,12 +12,45 @@ mlflow.set_tracking_uri("http://localhost:5000")
 mlflow.set_experiment("mnist_classification")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-transform = transforms.Compose([
-    transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))
-])
 
-train_dataset = datasets.MNIST(root='./data', train=True, download=True, transform=transform)
-test_dataset = datasets.MNIST(root='./data', train=False, download=True, transform=transform)
+class DuckLakeDataset(Dataset):
+    def __init__(self, con, query):
+        self.df = con.execute(query).fetchdf()
+        if 'y' in self.df.columns:
+            features = self.df.drop('y', axis=1)
+        else:
+            features = self.df
+        numerical_features = features.select_dtypes(include=['number'])
+        categorical_features = features.select_dtypes(exclude = ['number'])
+        if not categorical_features.empty:
+            encoded_features = pd.get_dummies(categorical_features)
+            features_tot = pd.concat([numerical_features, encoded_features], axis=1)
+        else:
+            features_tot = numerical_features
+        # Ensure all columns are numeric and fill NaNs
+        features_tot = features_tot.apply(pd.to_numeric, errors='coerce').fillna(0)
+        self.X = torch.tensor(features_tot.astype('float32').values, dtype=torch.float32)
+        if 'y' in self.df.columns:
+            self.y = torch.tensor(self.df['y'].values, dtype=torch.long)
+        else:
+            self.y = None
+    def __len__(self):
+        return len(self.df)
+    def __getitem__(self, idx):
+        if self.y is not None:
+            return self.X[idx], self.y[idx]
+        else:
+            return self.X[idx]
+
+
+con = duckdb.connect(database=':memory:')
+con.execute("ATTACH 'ducklake:/workspace/catalog.ducklake' AS my_lake (DATA_PATH '/workspace/catalog_data')")
+con.execute("USE my_lake")
+
+train_dataset = DuckLakeDataset(con, "SELECT * FROM bank_schema.train")
+test_dataset = DuckLakeDataset(con, "SELECT * FROM bank_schema.test")
+
+
 
 def objective(trial):
     lr = trial.suggest_loguniform("learning_rate", 1e-5, 1e-2)
@@ -23,12 +58,9 @@ def objective(trial):
     hidden2 = trial.suggest_int("hidden_units_2", 32, 128, step=16)
     batch_size = trial.suggest_categorical("batch_size", [32, 64, 128])
 
-    train_loader = DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=True
-        )
-    test_loader = DataLoader(
-        test_dataset, batch_size=batch_size, shuffle=False
-        )
+    train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
+    
     with mlflow.start_run():
         mlflow.set_tag("trial_number", trial.number)
         mlflow.set_tag("study_name", "mnist_hyperopt")
@@ -37,7 +69,8 @@ def objective(trial):
             "hidden_units": [hidden1, hidden2],
             "batch_size": batch_size
         })
-        mlpmodel = MLPModel(hidden_units=[hidden1, hidden2]).to(device)
+        in_features = train_dataset.X.shape[1]
+        mlpmodel = MLPModel(in_features=in_features, hidden_units=[hidden1, hidden2]).to(device)
         optimizer = optim.Adam(mlpmodel.parameters(), lr=lr)
         loss_fn = nn.CrossEntropyLoss()
         
@@ -72,6 +105,7 @@ def objective(trial):
             mlflow.log_metrics({"val_loss": val_loss, "val_acc": val_acc}, step=epoch)
             
     return val_loss
+
 study = optuna.create_study(direction="minimize")
 study.optimize(objective, n_trials=10)
 print("Best hyperparameters:", study.best_params)
@@ -100,3 +134,7 @@ with mlflow.start_run():
             optimizer.step()
     
     mlflow.pytorch.log_model(final_model, "model", registered_model_name="MNIST_MLP_Model")
+    
+if __name__ == "__main__":
+    print("Training complete. Best hyperparameters:", best_params)
+    

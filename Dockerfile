@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/vscode/devcontainers/python:3.10
+FROM mcr.microsoft.com/vscode/devcontainers/python:3.12-bullseye
 
 USER root
 RUN apt-get update && \

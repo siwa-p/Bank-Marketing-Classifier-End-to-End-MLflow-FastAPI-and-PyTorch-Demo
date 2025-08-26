@@ -3,22 +3,22 @@ import torch.nn as nn
 from minio import Minio
 import pandas as pd
 import io
-import duckdb
 from utilities.logging_config import logger
 
 
 class MLPModel(nn.Module):
-    def __init__(self, hidden_units=[128, 64]):
+    def __init__(self, in_features, hidden_units=[64, 32, 8]):
         super().__init__()
-        self.flatten = nn.Flatten()
-        self.fc1 = nn.Linear(28 * 28, hidden_units[0])
+        self.fc1 = nn.Linear(in_features, hidden_units[0])
         self.fc2 = nn.Linear(hidden_units[0], hidden_units[1])
-        self.fc3 = nn.Linear(hidden_units[1], 10)
+        self.fc3 = nn.Linear(hidden_units[1], hidden_units[2])
+        self.fc4 = nn.Linear(hidden_units[2], 1)
+        
     def forward(self, x):
-        x = self.flatten(x)
         x = torch.relu(self.fc1(x))
         x = torch.relu(self.fc2(x))
-        x = self.fc3(x)
+        x = torch.relu(self.fc3(x))
+        x = self.fc4(x)
         return x
     
 def get_minio_client(minio_url, minio_access_key, minio_secret_key):
@@ -61,7 +61,7 @@ def setup_db(con, minio_url, minio_access_key, minio_secret_key):
         SET s3_use_ssl=false;
         SET s3_url_style='path';
     """)
-    con.execute("ATTACH 'ducklake:/workspace/test_mlflow.py/catalog.ducklake' AS my_lake (DATA_PATH /workspace/catalog_data')")
+    con.execute("ATTACH 'ducklake:/workspace/catalog.ducklake' AS my_lake (DATA_PATH '/workspace/catalog_data')")
     con.execute("USE my_lake")
     con.execute("CREATE SCHEMA IF NOT EXISTS bank_schema")
     logger.info(f"Database setup completed")
