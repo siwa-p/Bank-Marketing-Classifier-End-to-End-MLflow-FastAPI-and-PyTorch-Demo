@@ -7,24 +7,21 @@ import pandas as pd
 from torch.utils.data import DataLoader, Dataset   
 from sklearn.model_selection import train_test_split  
 import optuna
-from utilities.utils import MLPModel  
+from utilities.utils import MLPModel, process_features  
+import os
+from utilities.logging_config import logger
+import numpy as np
+from mlflow.models.signature import infer_signature
+
 mlflow.set_tracking_uri("http://localhost:5000")
 mlflow.set_experiment("bank_classification")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+logger.info(f"Using device: {device}")
 
 class DuckLakeDataset(Dataset):
     def __init__(self, data):
         self.data = data
-        features = self.data.drop('y', axis=1)
-        numerical_features = features.select_dtypes(include=['number'])
-        categorical_features = features.select_dtypes(exclude = ['number'])
-        if not categorical_features.empty:
-            encoded_features = pd.get_dummies(categorical_features)
-            features_tot = pd.concat([numerical_features, encoded_features], axis=1)
-        else:
-            features_tot = numerical_features
-        features_tot = features_tot.apply(pd.to_numeric, errors='coerce').fillna(0)
+        features_tot = process_features(self.data)
         self.X = torch.tensor(features_tot.astype('float32').values, dtype=torch.float32)
         self.y = torch.tensor(self.data['y'].values, dtype=torch.long)
 
@@ -33,45 +30,40 @@ class DuckLakeDataset(Dataset):
     def __getitem__(self, index):
         return self.X[index], self.y[index]
 
-
-
 con = duckdb.connect(database=':memory:')
-con.execute("ATTACH 'ducklake:/home/prahald/Documents/Data Engineering Bootcamp/mlflow-demo/catalog.ducklake' AS my_lake (DATA_PATH '/home/prahald/Documents/Data Engineering Bootcamp/mlflow-demo/catalog_data')")
+folder_path = r"D:\Data Engineering Bootcamp\mlflow-demo"
+ducklake_db_path = os.path.join(folder_path, "catalog.ducklake")
+ducklake_data_path = os.path.join(folder_path, "catalog_data")
+con.execute(f"ATTACH 'ducklake:{ducklake_db_path}' AS my_lake (DATA_PATH '{ducklake_data_path}')")
 con.execute("USE my_lake")
 
 train_data = con.execute("SELECT * FROM bank_schema.train").fetchdf()
 train_data, val_data = train_test_split(train_data, test_size=0.2, random_state=1)
-
+logger.info(f"Train data shape: {train_data.shape}, Validation data shape: {val_data.shape}")
 train_dataset = DuckLakeDataset(train_data)
 test_dataset = DuckLakeDataset(val_data)
+logger.info(f"Train dataset size: {len(train_dataset)}, Test dataset size: {len(test_dataset)}")
 in_features = train_dataset.X.shape[1]
-model = MLPModel(in_features=in_features).to(device)
-optimizer = optim.Adam(model.parameters(), lr=1e-3)
-loss_fn = nn.BCEWithLogitsLoss()
-
-train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
-test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
-
+logger.info(f"Number of input features: {in_features}")
 
 def objective(trial):
-    lr = trial.suggest_loguniform("learning_rate", 1e-5, 1e-2)
-    hidden1 = trial.suggest_int("hidden_units_1", 80, 144, step=16)
+    lr = trial.suggest_loguniform("learning_rate", 1e-4, 1e-2)
+    hidden1 = trial.suggest_int("hidden_units_1", 128, 256, step=32)
     hidden2 = trial.suggest_int("hidden_units_2", 16, 64, step=8)
+    hidden3 = trial.suggest_int("hidden_units_3", 8, 32, step=4)
     batch_size = trial.suggest_categorical("batch_size", [32, 64, 128])
 
-    train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
     with mlflow.start_run():
         mlflow.set_tag("trial_number", trial.number)
-        mlflow.set_tag("study_name", "mnist_hyperopt")
         mlflow.log_params({
             "learning_rate": lr,
-            "hidden_units": [hidden1, hidden2],
+            "hidden_units": [hidden1, hidden2, hidden3],
             "batch_size": batch_size
         })
-        in_features = train_dataset.X.shape[1]
-        mlpmodel = MLPModel(in_features=in_features, hidden_units=[hidden1, hidden2]).to(device)
+        mlpmodel = MLPModel(in_features=in_features, hidden_units=[hidden1, hidden2, hidden3]).to(device)
         optimizer = optim.Adam(mlpmodel.parameters(), lr=lr)
         loss_fn = nn.BCEWithLogitsLoss()
         
@@ -84,49 +76,48 @@ def objective(trial):
                 loss = loss_fn(output, target.unsqueeze(1).float())
                 loss.backward()
                 optimizer.step()
-            print(f"Epoch {epoch+1} training complete.")
-
-                    
             mlpmodel.eval()
             val_loss = 0
             val_correct = 0
             val_total = 0
-            
             with torch.no_grad():
                 for data, target in test_loader:
                     data, target = data.to(device), target.to(device)
                     output = mlpmodel(data)
                     loss = loss_fn(output, target.unsqueeze(1).float())
-                    
-                    val_loss += loss.item()
-                    _, predicted = output.max(1)
+                    val_loss += loss.item() * data.size(0)
+                    probs = torch.sigmoid(output)
+                    predicted = (probs > 0.5).long().squeeze(1)
                     val_total += target.size(0)
-                    val_correct += predicted.eq(target).sum().item()
-            
-            val_loss /= len(test_loader)
-            val_acc = 100. * val_correct / val_total
-            mlflow.log_metrics({"val_loss": val_loss, "val_acc": val_acc}, step=epoch)     
+                    val_correct += (predicted == target).sum().item()
+            val_loss /= len(test_loader.dataset)
+            val_accuracy = val_correct / val_total
+            mlflow.log_metrics({
+                "val_loss": val_loss,
+                "val_accuracy": val_accuracy
+            }, step=epoch)
     return val_loss
 
 study = optuna.create_study(direction="minimize")
 study.optimize(objective, n_trials=10)
-print("Best hyperparameters:", study.best_params)
-print("Best validation loss:", study.best_value)
-
-# train with best hyperparameters and log final model
+logger.info(f"Best trial: {study.best_trial.params}")
+logger.info(f"Best validation loss: {study.best_value}")
 best_params = study.best_params
 with mlflow.start_run():
     mlflow.set_tag("final_model", "mnist_mlp")
     mlflow.log_params(best_params)
-    in_features = train_dataset.X.shape[1]
-    
-    final_model = MLPModel(in_features=in_features, hidden_units=[best_params['hidden_units_1'], best_params['hidden_units_2']]).to(device)
+    final_model = MLPModel(
+        in_features=in_features,
+        hidden_units=[
+            best_params['hidden_units_1'],
+            best_params['hidden_units_2'],
+            best_params["hidden_units_3"]
+        ]
+    ).to(device)
     optimizer = optim.Adam(final_model.parameters(), lr=best_params['learning_rate'])
     loss_fn = nn.BCEWithLogitsLoss()
-    
     train_loader = DataLoader(train_dataset, batch_size=best_params['batch_size'], shuffle=True)
-    
-    for epoch in range(5):
+    for epoch in range(20):
         final_model.train()
         for data, target in train_loader:
             data, target = data.to(device), target.to(device)
@@ -135,9 +126,11 @@ with mlflow.start_run():
             loss = loss_fn(output, target.unsqueeze(1).float())
             loss.backward()
             optimizer.step()
-    
-    mlflow.pytorch.log_model(final_model, "model", registered_model_name="MNIST_MLP_Model")
-    
-if __name__ == "__main__":
-    print("Training complete. Best hyperparameters:", best_params)
-    
+    final_model.eval()
+    sample_input = np.random.uniform(size=[1, in_features]).astype(np.float32)
+    with torch.no_grad():
+        output = final_model(torch.tensor(sample_input).to(device))
+        sample_output = output.cpu().numpy()
+    signature = infer_signature(sample_input, sample_output)
+    mlflow.pytorch.log_model(final_model, "model", signature=signature)
+    logger.info("Final model logged to MLflow.")

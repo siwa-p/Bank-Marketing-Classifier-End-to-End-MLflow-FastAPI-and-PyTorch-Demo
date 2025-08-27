@@ -19,9 +19,11 @@ from utilities.utils import get_minio_client, upload_to_minio
 minio_client = get_minio_client(minio_url, minio_access_key, minio_secret_key)
 
 def main():
-    root_file_path = "/home/prahald/Documents/Data Engineering Bootcamp/mlflow-demo/data/"
-    train_data = pd.read_csv(f"{root_file_path}train.csv")
-    test_data = pd.read_csv(f"{root_file_path}test.csv")
+    folder_path = r"D:\Data Engineering Bootcamp\mlflow-demo\data"
+    train_data_path = os.path.join(folder_path, "train.csv")
+    test_data_path = os.path.join(folder_path, "test.csv")
+    train_data = pd.read_csv(train_data_path)
+    test_data = pd.read_csv(test_data_path)
     upload_to_minio(minio_client, minio_bucket, train_data, "train.parquet")
     upload_to_minio(minio_client, minio_bucket, test_data, "test.parquet")
     logger.info("Data ingestion completed successfully.")
