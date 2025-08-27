@@ -63,8 +63,10 @@ async def get_features(q: List[Any]):
 
 @app.post("/predict", tags=["Prediction"])
 async def predict(features: dict):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
     model = MLPModel(in_features=52, hidden_units=[256, 48, 32], dropout_prob=0.3)
-    model.load_state_dict(torch.load("mlruns/best_model.pt"))
+    model.load_state_dict(torch.load("mlruns/best_model.pt", map_location=device))
     logger.info("Model loaded successfully.")
     try:
         # Only map fields that differ between API and model
