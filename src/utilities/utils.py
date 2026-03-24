@@ -85,10 +85,8 @@ def setup_db(con, minio_url, minio_access_key, minio_secret_key):
     return None
 
 def process_features(data):
-    if "y" in data.columns:
-        features = data.drop('y', axis=1)
-    else:
-        features = data.copy()
+    drop_cols = [c for c in ["y", "id", "duration", "pdays"] if c in data.columns]
+    features = data.drop(columns=drop_cols)
     numerical_features = features.select_dtypes(include=['number'])
     categorical_features = features.select_dtypes(exclude=['number'])
     if not categorical_features.empty:
