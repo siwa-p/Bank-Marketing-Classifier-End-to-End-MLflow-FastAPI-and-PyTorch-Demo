@@ -67,7 +67,7 @@ def upload_to_minio(minio_client, bucket_name, data, object_name):
 
 
 def setup_db(con, minio_url, minio_access_key, minio_secret_key):
-    folder_path = r"D:\Data Engineering Bootcamp\mlflow-demo"
+    folder_path = os.environ.get("PROJECT_ROOT", os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     ducklake_db_path = os.path.join(folder_path, "catalog.ducklake")
     ducklake_data_path = os.path.join(folder_path, "catalog_data")
 

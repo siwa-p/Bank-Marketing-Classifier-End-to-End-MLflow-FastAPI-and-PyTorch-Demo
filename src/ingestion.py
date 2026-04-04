@@ -17,7 +17,7 @@ minio_bucket = os.getenv("MINIO_BUCKET")
 minio_client = get_minio_client(minio_url, minio_access_key, minio_secret_key)
 
 def main():
-    folder_path = r"D:\Data Engineering Bootcamp\mlflow-demo\data"
+    folder_path = os.path.join(os.environ.get("PROJECT_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data")
     train_data_path = os.path.join(folder_path, "train.csv")
     test_data_path = os.path.join(folder_path, "test.csv")
     train_data = pd.read_csv(train_data_path)

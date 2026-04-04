@@ -30,10 +30,10 @@ class DuckLakeDataset(Dataset):
         return self.X[index], self.y[index]
 
 con = duckdb.connect(database=':memory:')
-folder_path = r"D:\Data Engineering Bootcamp\mlflow-demo"
+folder_path = os.environ.get("PROJECT_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ducklake_db_path = os.path.join(folder_path, "catalog.ducklake")
 ducklake_data_path = os.path.join(folder_path, "catalog_data")
-con.execute(f"ATTACH 'ducklake:{ducklake_db_path}' AS my_lake (DATA_PATH '{ducklake_data_path}')")
+con.execute(f"ATTACH 'ducklake:{ducklake_db_path}' AS my_lake (DATA_PATH '{ducklake_data_path}', AUTOMATIC_MIGRATION, OVERRIDE_DATA_PATH TRUE)")
 con.execute("USE my_lake")
 
 train_data = con.execute("SELECT * FROM bank_schema.train").fetchdf()

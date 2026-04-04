@@ -30,6 +30,45 @@ This project demonstrates a complete machine learning workflow for a bank market
 - Exposed a user-friendly API for inference and feature processing
 - Containerized the workflow for reproducibility and easy deployment
 
+## Running the Project
+
+Services must be started in order. Run each step and wait for it to complete before moving to the next.
+
+### Step 1 — Start infrastructure
+```bash
+docker compose up postgres minio -d
+```
+Wait until both are healthy (check with `docker compose ps`).
+
+### Step 2 — Create the MinIO bucket
+```bash
+docker run --rm --network mlflow-demo_backend --entrypoint sh minio/mc \
+  -c "mc alias set local http://minio:9000 admin password && mc mb local/mlflow-artifacts"
+
+```
+
+### Step 3 — Start the MLflow tracking server
+```bash
+docker compose up tracking_server -d
+```
+
+### Step 4 — Train the model (first time only)
+Run locally with the venv active:
+```bash
+python src/bank_classifier.py
+```
+This logs experiments to MLflow, registers the model, and tags it as `production`.
+
+### Step 5 — Start the API
+```bash
+docker compose up mlflow-proxy fastapi -d
+```
+
+The FastAPI service is now available at `http://localhost:8000`.  
+The MLflow UI is available at `http://localhost:5000`.
+
+> **Note:** Step 4 (training) only needs to be re-run when you want to retrain the model. The registered model persists in the MLflow backend (Postgres + MinIO) across restarts.
+
 ---
 For more details, see the source code and comments in each file.
 # mlflow-demo

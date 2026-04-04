@@ -8,3 +8,5 @@ pydantic
 torch
 pandas
 numpy
+duckdb
+optuna

@@ -1,6 +1,7 @@
 FROM mcr.microsoft.com/vscode/devcontainers/python:3.12-bullseye
 
-RUN apt-get update && \
+RUN rm -f /etc/apt/sources.list.d/yarn.list && \
+    apt-get update && \
     apt-get install -y --no-install-recommends git curl postgresql-client && \
     apt-get clean -y && rm -rf /var/lib/apt/lists/*
 
