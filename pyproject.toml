@@ -1,0 +1,36 @@
+[project]
+name = "bank-marketing-classifier"
+version = "0.1.0"
+description = "End-to-end bank marketing classifier with MLflow, FastAPI, and PyTorch"
+requires-python = ">=3.12"
+dependencies = [
+    "psycopg2-binary",
+    "boto3",
+    "mlflow",
+    "minio",
+    "fastapi",
+    "uvicorn[standard]",
+    "pydantic",
+    "torch",
+    "pandas",
+    "numpy",
+]
+
+[dependency-groups]
+dev = [
+    "optuna",
+    "duckdb",
+    "scikit-learn",
+    "python-dotenv",
+]
+
+[tool.uv]
+package = false
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }

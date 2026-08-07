@@ -1,11 +1,14 @@
 import duckdb
 import os
 import torch
+import mlflow.pytorch
 from torch.utils.data import DataLoader, Dataset
-from utilities.utils import MLPModel, process_features
+from utilities.utils import process_features
 from utilities.logging_config import logger
 
 import pandas as pd
+
+mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000"))
 
 class DuckLakeDataset(Dataset):
     def __init__(self, data):
@@ -19,7 +22,7 @@ class DuckLakeDataset(Dataset):
         return self.X[index]
     
 con = duckdb.connect(database=':memory:')
-folder_path = "/home/prahald/Documents/Data Engineering Bootcamp/mlflow-demo"
+folder_path = os.getenv("DUCKLAKE_DIR", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ducklake_db_path = os.path.join(folder_path, "catalog.ducklake")
 ducklake_data_path = os.path.join(folder_path, "catalog_data")
 con.execute(f"ATTACH 'ducklake:{ducklake_db_path}' AS my_lake (DATA_PATH '{ducklake_data_path}')")
@@ -31,9 +34,8 @@ test_dataset = DuckLakeDataset(test_data)
 test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-model = MLPModel(in_features=52, hidden_units=[256, 48, 32], dropout_prob=0.3)
-model.load_state_dict(torch.load("mlruns/best_model.pt", map_location=device))
-logger.info("Model loaded successfully.")
+model = mlflow.pytorch.load_model("models:/bank_classifier@production", map_location=device)
+logger.info("Model loaded from MLflow registry (production).")
 
 def predict(model, dataloader):
     model.eval()
@@ -43,7 +45,7 @@ def predict(model, dataloader):
         for inputs in dataloader:
             inputs = inputs.to(device)
             outputs = model(inputs)
-            predict_proba = torch.sigmoid(outputs)  
+            predict_proba = torch.sigmoid(outputs).squeeze(1)
             preds = predict_proba.cpu().numpy()
             rounded_preds = [round(float(p), 2) for p in preds]
             all_predictions.extend(rounded_preds)

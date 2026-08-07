@@ -1,18 +1,21 @@
-import mlflow
-import duckdb
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import DataLoader, Dataset   
-from sklearn.model_selection import train_test_split  
-import optuna
-from utilities.utils import MLPModel, process_features  
+import copy
 import os
-from utilities.logging_config import logger
-import numpy as np
-from mlflow.models.signature import infer_signature
 
-mlflow.set_tracking_uri("http://localhost:5000")
+import duckdb
+import mlflow
+import numpy as np
+import optuna
+import torch
+from mlflow.models.signature import infer_signature
+from sklearn.metrics import f1_score
+from sklearn.model_selection import train_test_split
+from torch import nn, optim
+from torch.utils.data import DataLoader, Dataset
+
+from utilities.logging_config import logger
+from utilities.utils import MLPModel, process_features
+
+mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000"))
 mlflow.set_experiment("bank_classification")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 logger.info(f"Using device: {device}")
@@ -30,7 +33,7 @@ class DuckLakeDataset(Dataset):
         return self.X[index], self.y[index]
 
 con = duckdb.connect(database=':memory:')
-folder_path = r"D:\Data Engineering Bootcamp\mlflow-demo"
+folder_path = os.getenv("DUCKLAKE_DIR", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ducklake_db_path = os.path.join(folder_path, "catalog.ducklake")
 ducklake_data_path = os.path.join(folder_path, "catalog_data")
 con.execute(f"ATTACH 'ducklake:{ducklake_db_path}' AS my_lake (DATA_PATH '{ducklake_data_path}')")
@@ -126,7 +129,7 @@ logger.info(f"Best trial: {study.best_trial.params}")
 logger.info(f"Best validation loss: {study.best_value}")
 best_params = study.best_params
 with mlflow.start_run():
-    mlflow.set_tag("final_model", "mnist_mlp")
+    mlflow.set_tag("final_model", "bank_marketing_mlp")
     mlflow.log_params(best_params)
     final_model = MLPModel(
         in_features=in_features,
@@ -141,8 +144,11 @@ with mlflow.start_run():
     train_loader = DataLoader(train_dataset, batch_size=best_params['batch_size'], shuffle=True)
     val_loader = DataLoader(test_dataset, batch_size=best_params['batch_size'], shuffle=False)
     best_val_loss = float('inf')
+    best_val_accuracy = None
+    best_val_f1 = None
     patience = 5
     epochs_no_improve = 0
+    best_state_dict = None
     for epoch in range(10):
         final_model.train()
         train_loss = 0
@@ -166,6 +172,8 @@ with mlflow.start_run():
         val_loss = 0
         val_correct = 0
         val_total = 0
+        val_preds = []
+        val_targets = []
         with torch.no_grad():
             for data, target in val_loader:
                 data, target = data.to(device), target.to(device)
@@ -176,21 +184,56 @@ with mlflow.start_run():
                 predicted = (probs > 0.5).long().squeeze(1)
                 val_total += target.size(0)
                 val_correct += (predicted == target).sum().item()
+                val_preds.extend(predicted.cpu().tolist())
+                val_targets.extend(target.cpu().tolist())
         val_loss /= len(val_loader.dataset)
         val_accuracy = val_correct / val_total
+        val_f1 = f1_score(val_targets, val_preds, zero_division=0)
         mlflow.log_metrics({
             "train_loss": train_loss,
             "train_accuracy": train_accuracy,
             "val_loss": val_loss,
-            "val_accuracy": val_accuracy
+            "val_accuracy": val_accuracy,
+            "val_f1": val_f1
         }, step=epoch)
+
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            best_val_accuracy = val_accuracy
+            best_val_f1 = val_f1
+            epochs_no_improve = 0
+            best_state_dict = copy.deepcopy(final_model.state_dict())
+        else:
+            epochs_no_improve += 1
+            if epochs_no_improve >= patience:
+                logger.info(f"Early stopping at epoch {epoch} (no improvement for {patience} epochs)")
+                break
+
+    if best_state_dict is not None:
+        final_model.load_state_dict(best_state_dict)
+    mlflow.log_metrics({
+        "best_val_loss": best_val_loss,
+        "best_val_accuracy": best_val_accuracy,
+        "best_val_f1": best_val_f1
+    })
+    logger.info(
+        f"Best checkpoint — val_loss: {best_val_loss:.4f}, "
+        f"val_accuracy: {best_val_accuracy:.4f}, val_f1: {best_val_f1:.4f}"
+    )
     final_model.eval()
     sample_input = np.random.uniform(size=[1, in_features]).astype(np.float32)
     with torch.no_grad():
         output = final_model(torch.tensor(sample_input).to(device))
         sample_output = output.cpu().numpy()
     signature = infer_signature(sample_input, sample_output)
-    mlflow.pytorch.log_model(final_model, "model", signature=signature, registered_model_name="bank_classifier")
+    mlflow.pytorch.log_model(
+        final_model,
+        "model",
+        signature=signature,
+        input_example=sample_input,
+        registered_model_name="bank_classifier",
+        serialization_format=mlflow.pytorch.SERIALIZATION_FORMAT_PICKLE
+    )
     client = mlflow.MlflowClient()
     versions = client.search_model_versions("name='bank_classifier'")
     latest_version = max(versions, key=lambda v: int(v.version)).version
