@@ -1,13 +1,15 @@
+import os
+import sys
 from datetime import datetime
+from typing import Literal
+
+import mlflow
+import pandas as pd
+import torch
 from fastapi import FastAPI, HTTPException
+
 from utilities.logging_config import logger
 from utilities.utils import process_features
-import sys
-import os
-import mlflow
-import torch
-from typing import Literal
-import pandas as pd
 
 sys.path.append(os.path.join(os.path.dirname(__file__)))
 sys.path.append(os.path.join(os.path.dirname(__file__), 'utilities'))
@@ -57,12 +59,11 @@ async def health_check():
 
 
 EXPECTED_COLS = [
-    "age", "balance", "day", "campaign", "previous",
+    "age", "balance", "day", "campaign", "previous", "default", "housing", "loan",
     "job_admin.", "job_blue-collar", "job_entrepreneur", "job_housemaid", "job_management",
     "job_retired", "job_self-employed", "job_services", "job_student", "job_technician",
     "job_unemployed", "job_unknown", "marital_divorced", "marital_married", "marital_single",
     "education_primary", "education_secondary", "education_tertiary", "education_unknown",
-    "default_no", "default_yes", "housing_no", "housing_yes", "loan_no", "loan_yes",
     "contact_cellular", "contact_telephone", "contact_unknown", "month_apr", "month_aug",
     "month_dec", "month_feb", "month_jan", "month_jul", "month_jun", "month_mar",
     "month_may", "month_nov", "month_oct", "month_sep", "poutcome_failure", "poutcome_other",
@@ -73,6 +74,8 @@ EXPECTED_COLS = [
 async def predict(features: CustomerFeatures):
     try:
         df = pd.DataFrame([features.model_dump()])
+        for col in ["default", "housing", "loan"]:
+            df[col] = df[col] == "yes"
         processed = process_features(df).iloc[0]
         for col in EXPECTED_COLS:
             if col not in processed.index:

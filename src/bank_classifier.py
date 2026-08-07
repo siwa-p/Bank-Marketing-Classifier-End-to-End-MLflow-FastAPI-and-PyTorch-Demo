@@ -1,20 +1,21 @@
 import copy
-import mlflow
-import duckdb
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import DataLoader, Dataset   
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import f1_score
-import optuna
-from utilities.utils import MLPModel, process_features  
 import os
-from utilities.logging_config import logger
-import numpy as np
-from mlflow.models.signature import infer_signature
 
-mlflow.set_tracking_uri("http://localhost:5000")
+import duckdb
+import mlflow
+import numpy as np
+import optuna
+import torch
+from mlflow.models.signature import infer_signature
+from sklearn.metrics import f1_score
+from sklearn.model_selection import train_test_split
+from torch import nn, optim
+from torch.utils.data import DataLoader, Dataset
+
+from utilities.logging_config import logger
+from utilities.utils import MLPModel, process_features
+
+mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000"))
 mlflow.set_experiment("bank_classification")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 logger.info(f"Using device: {device}")
@@ -230,7 +231,8 @@ with mlflow.start_run():
         "model",
         signature=signature,
         input_example=sample_input,
-        registered_model_name="bank_classifier"
+        registered_model_name="bank_classifier",
+        serialization_format=mlflow.pytorch.SERIALIZATION_FORMAT_PICKLE
     )
     client = mlflow.MlflowClient()
     versions = client.search_model_versions("name='bank_classifier'")
