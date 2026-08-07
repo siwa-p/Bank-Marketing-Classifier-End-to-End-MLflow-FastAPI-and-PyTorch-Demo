@@ -14,6 +14,7 @@ minio_access_key = os.getenv("MINIO_ACCESS_KEY")
 minio_secret_key = os.getenv("MINIO_SECRET_KEY")
 minio_url = os.getenv("MINIO_URL")
 minio_bucket_name = os.getenv("MINIO_BUCKET")
+minio_data_folder = os.getenv("MINIO_DATA_FOLDER", "data")
 
 minio_client = get_minio_client(minio_url, minio_access_key, minio_secret_key)
 
@@ -27,13 +28,13 @@ con.execute("INSTALL 'ducklake'") \
    .execute("INSTALL 'httpfs'") \
    .execute("LOAD 'httpfs'")
 
-def load_parquet_from_minio_to_duckdb(con, table_name, schema_name):
-    object_name = f"{table_name}.parquet"
+def load_csv_from_minio_to_duckdb(con, table_name, schema_name):
+    object_name = f"{minio_data_folder}/{table_name}.csv"
     s3_path = f"s3://{minio_bucket_name}/{object_name}"
     try:
         con.execute(f"""
             CREATE TABLE IF NOT EXISTS {schema_name}.{table_name} AS
-            SELECT * FROM read_parquet('{s3_path}')
+            SELECT * FROM read_csv('{s3_path}')
         """)
         logger.info(f"Loaded {table_name} into DuckDB table {schema_name}.{table_name}")
     except Exception as e:
@@ -42,8 +43,8 @@ def load_parquet_from_minio_to_duckdb(con, table_name, schema_name):
 
 def main():
     setup_db(con, minio_url, minio_access_key, minio_secret_key)
-    load_parquet_from_minio_to_duckdb(con, "train", "bank_schema")
-    load_parquet_from_minio_to_duckdb(con, "test", "bank_schema")
+    load_csv_from_minio_to_duckdb(con, "train", "bank_schema")
+    load_csv_from_minio_to_duckdb(con, "test", "bank_schema")
     logger.info("Data loading completed successfully.")
     
 if __name__ == "__main__":

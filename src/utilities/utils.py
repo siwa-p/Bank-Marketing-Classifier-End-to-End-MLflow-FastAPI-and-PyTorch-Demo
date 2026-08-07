@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 from minio import Minio
 import pandas as pd
-import io
 import os
 from utilities.logging_config import logger
 
@@ -48,26 +47,10 @@ def get_minio_client(minio_url, minio_access_key, minio_secret_key):
         logger.error(f"Failed to connect to MinIO: {e}")
         raise
 
-def upload_to_minio(minio_client, bucket_name, data, object_name):
-    if not minio_client.bucket_exists(bucket_name):
-        logger.info(f"Bucket {bucket_name} does not exist. Creating it.")
-        minio_client.make_bucket(bucket_name)
-    parquet_buffer = io.BytesIO()
-    data.to_parquet(parquet_buffer, index=False)
-    parquet_buffer.seek(0)
-    minio_client.put_object(
-        bucket_name,
-        object_name,
-        parquet_buffer,
-        length=parquet_buffer.getbuffer().nbytes,
-        content_type="application/octet-stream",
-    )
-    logger.info(f"Data uploaded to MinIO bucket {bucket_name} as {object_name}")
-
-
+DEFAULT_DUCKLAKE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 def setup_db(con, minio_url, minio_access_key, minio_secret_key):
-    folder_path = r"D:\Data Engineering Bootcamp\mlflow-demo"
+    folder_path = os.getenv("DUCKLAKE_DIR", DEFAULT_DUCKLAKE_DIR)
     ducklake_db_path = os.path.join(folder_path, "catalog.ducklake")
     ducklake_data_path = os.path.join(folder_path, "catalog_data")
 

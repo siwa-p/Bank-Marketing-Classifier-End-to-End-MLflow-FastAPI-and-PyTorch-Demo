@@ -19,7 +19,7 @@ class DuckLakeDataset(Dataset):
         return self.X[index]
     
 con = duckdb.connect(database=':memory:')
-folder_path = "/home/prahald/Documents/Data Engineering Bootcamp/mlflow-demo"
+folder_path = os.getenv("DUCKLAKE_DIR", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ducklake_db_path = os.path.join(folder_path, "catalog.ducklake")
 ducklake_data_path = os.path.join(folder_path, "catalog_data")
 con.execute(f"ATTACH 'ducklake:{ducklake_db_path}' AS my_lake (DATA_PATH '{ducklake_data_path}')")
