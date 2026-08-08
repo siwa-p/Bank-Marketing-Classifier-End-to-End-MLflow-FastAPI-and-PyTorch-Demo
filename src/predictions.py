@@ -1,12 +1,13 @@
-import duckdb
 import os
-import torch
-import mlflow.pytorch
-from torch.utils.data import DataLoader, Dataset
-from utilities.utils import process_features
-from utilities.logging_config import logger
 
+import duckdb
+import mlflow.pytorch
 import pandas as pd
+import torch
+from torch.utils.data import DataLoader, Dataset
+
+from utilities.logging_config import logger
+from utilities.utils import process_features
 
 mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000"))
 
